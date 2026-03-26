@@ -209,3 +209,7 @@ __marimo__/
 # Local secrets (DO NOT COMMIT)
 secrets/
 
+
+# Local temp outputs
+tmp/
+
