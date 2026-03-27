@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import json
 from pathlib import Path
 
@@ -16,10 +16,10 @@ def print_plan(job: dict, job_path: Path) -> None:
 
     publish = job.get("publish", {}) if isinstance(job.get("publish"), dict) else {}
     title = publish.get("title", "<missing>")
-    visibility = publish.get("visibility", "<missing>")
+    privacyStatus = publish.get("privacyStatus", "<missing>")
     print("Publish:")
     print(f"  title      : {title}")
-    print(f"  visibility : {visibility}")
+    print(f"  privacyStatus : {privacyStatus}")
     print()
 
     script = job.get("script", {})
