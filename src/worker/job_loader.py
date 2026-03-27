@@ -1,94 +1,83 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 JOBS_DIR = Path("jobs")
 DONE_DIR = JOBS_DIR / "done"
 
 
-class JobError(Exception):
-    pass
-
-
 @dataclass(frozen=True)
 class JobSummary:
-    path: Path
     job_id: str
-    version: str
+    job_path: Path
+    publish_title: str
+    publish_privacyStatus: str
+    has_local_background: bool
 
 
-def _required_str(d: dict[str, Any], key: str) -> str:
-    v = d.get(key)
-    if not isinstance(v, str) or not v.strip():
-        raise JobError(f"Job missing required string field: {key}")
-    return v
+def _is_real_job_file(path: Path) -> bool:
+    """
+    Accept: jobs/job_0001.json, jobs/job_abcd.json, etc.
+    Reject: jobs/job_schema_v1.json
+    """
+    if path.suffix.lower() != ".json":
+        return False
+    name = path.name.lower()
+    if not name.startswith("job_"):
+        return False
+    if "schema" in name:
+        return False
+    return True
 
 
-def load_job(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        raise JobError(f"Job file not found: {path}")
-
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise JobError(f"Invalid JSON in {path}: {e}") from e
-
-    if not isinstance(data, dict):
-        raise JobError(f"Job JSON must be an object at top level: {path}")
-
-    # Minimal required fields for v1
-    _required_str(data, "version")
-    _required_str(data, "job_id")
-
-    # These should exist per our schema, but we’ll validate lightly for now
-    if "script" not in data:
-        raise JobError("Job missing required field: script")
-    if "publish" not in data:
-        raise JobError("Job missing required field: publish")
-
-    return data
-
-
-def find_newest_job_file(jobs_dir: Path = JOBS_DIR) -> Path | None:
-    if not jobs_dir.exists():
+def find_newest_job_file() -> Path | None:
+    if not JOBS_DIR.exists():
         return None
 
-    candidates = sorted(
-        (p for p in jobs_dir.glob("job_*.json") if p.is_file()),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    return candidates[0] if candidates else None
+    candidates = [p for p in JOBS_DIR.glob("job_*.json") if _is_real_job_file(p)]
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
-def get_job_summary(job: dict[str, Any], path: Path) -> JobSummary:
+def load_job(job_path: Path) -> dict[str, Any]:
+    return json.loads(job_path.read_text(encoding="utf-8"))
+
+
+def get_job_summary(job: dict[str, Any], job_path: Path) -> JobSummary:
+    job_id = str(job.get("job_id") or job_path.stem.replace("job_", "", 1))
+
+    publish = job.get("publish") or {}
+    title = str(publish.get("title") or "")
+    privacy = str(publish.get("privacyStatus") or "")
+
+    assets = job.get("assets") or {}
+    clips = assets.get("background_clips") or []
+    has_local_bg = False
+    if isinstance(clips, list) and clips:
+        lp = clips[0].get("local_path")
+        has_local_bg = bool(lp)
+
     return JobSummary(
-        path=path,
-        job_id=str(job.get("job_id", "")),
-        version=str(job.get("version", "")),
+        job_id=job_id,
+        job_path=job_path,
+        publish_title=title,
+        publish_privacyStatus=privacy,
+        has_local_background=has_local_bg,
     )
 
 
-def mark_job_done(job_path: Path, done_dir: Path = DONE_DIR) -> Path:
-    """
-    Move a processed job file into jobs/done/ (v1).
+def mark_job_done(job_path: Path) -> Path:
+    DONE_DIR.mkdir(parents=True, exist_ok=True)
 
-    Example:
-      jobs/job_0001.json  ->  jobs/done/job_0001.json
-
-    Returns the destination path.
-    """
-    if not job_path.exists():
-        raise JobError(f"Cannot mark done; file does not exist: {job_path}")
-
-    done_dir.mkdir(parents=True, exist_ok=True)
-
-    dest = done_dir / job_path.name
+    dest = DONE_DIR / job_path.name
     if dest.exists():
-        raise JobError(f"Done file already exists (refusing to overwrite): {dest}")
+        raise FileExistsError(f"Refusing to overwrite existing done job: {dest}")
 
-    return job_path.replace(dest)
+    shutil.move(str(job_path), str(dest))
+    return dest
