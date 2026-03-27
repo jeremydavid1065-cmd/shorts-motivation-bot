@@ -1,8 +1,9 @@
 ﻿from __future__ import annotations
+import argparse
 import json
 from pathlib import Path
 
-from src.worker.job_loader import JobError, find_newest_job_file, get_job_summary, load_job
+from src.worker.job_loader import JobError, find_newest_job_file, get_job_summary, load_job, mark_job_done
 
 
 def print_plan(job: dict, job_path: Path) -> None:
@@ -30,13 +31,21 @@ def print_plan(job: dict, job_path: Path) -> None:
     print("Plan:")
     print("  1) Render 1080x1920 video (FFmpeg) [NOT IMPLEMENTED]")
     print("  2) Upload to YouTube via OAuth on this laptop [NOT IMPLEMENTED]")
-    print("  3) Mark job done (move/rename) [NOT IMPLEMENTED]")
+    print("  3) Mark job done (move/rename) [OPTIONAL]")
     print()
     print("Full job JSON (preview):")
     print(json.dumps(job, indent=2)[:1500])
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--mark-done",
+        action="store_true",
+        help="Move the job file to jobs/done/ after the dry-run prints successfully.",
+    )
+    args = parser.parse_args()
+
     job_path = find_newest_job_file()
     if job_path is None:
         print("No job files found in /jobs (expected jobs/job_*.json).")
@@ -50,7 +59,18 @@ def main() -> int:
         return 2
 
     print_plan(job, job_path)
+
+    if args.mark_done:
+        try:
+            dest = mark_job_done(job_path)
+        except JobError as e:
+            print(f"JOB ERROR (mark done): {e}")
+            return 3
+        print()
+        print(f"Marked done: {job_path.as_posix()} -> {dest.as_posix()}")
+
     return 0
+
 
 if __name__ == "__main__":
 

@@ -7,6 +7,7 @@ from typing import Any
 
 
 JOBS_DIR = Path("jobs")
+DONE_DIR = JOBS_DIR / "done"
 
 
 class JobError(Exception):
@@ -70,3 +71,24 @@ def get_job_summary(job: dict[str, Any], path: Path) -> JobSummary:
         job_id=str(job.get("job_id", "")),
         version=str(job.get("version", "")),
     )
+
+
+def mark_job_done(job_path: Path, done_dir: Path = DONE_DIR) -> Path:
+    """
+    Move a processed job file into jobs/done/ (v1).
+
+    Example:
+      jobs/job_0001.json  ->  jobs/done/job_0001.json
+
+    Returns the destination path.
+    """
+    if not job_path.exists():
+        raise JobError(f"Cannot mark done; file does not exist: {job_path}")
+
+    done_dir.mkdir(parents=True, exist_ok=True)
+
+    dest = done_dir / job_path.name
+    if dest.exists():
+        raise JobError(f"Done file already exists (refusing to overwrite): {dest}")
+
+    return job_path.replace(dest)
